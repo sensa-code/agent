@@ -12,6 +12,8 @@
     "docker:clean": "docker compose down -v --rmi local"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
+    "@supabase/supabase-js": "^2.95.3",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"
