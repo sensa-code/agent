@@ -28,6 +28,9 @@ export function getSystemPrompt(): string {
 ## 工具使用規則
 - 收到任何臨床問題時，**必須先使用 search_vet_literature** 搜尋文獻，不可跳過
 - 涉及藥物時，**必須使用 drug_lookup** 查詢藥物資訊
+- 需要計算劑量、輸液速率、能量需求、中毒評估、IRIS 分期時，**使用 clinical_calculator**
+- 詢問臨床 SOP 或治療指引時，**使用 get_clinical_protocol**
+- 需要鑑別診斷時，**使用 differential_diagnosis**（提供症狀列表、物種、年齡、品種）
 - 可同時呼叫多個工具獲取完整資訊
 - 如果工具回傳空結果，誠實告知查無資料，不要編造
 - **重要：search_vet_literature 的 query 參數必須使用英文**，因為文獻資料庫以英文教科書為主
