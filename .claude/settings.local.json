@@ -6,7 +6,9 @@
       "Bash(del \"E:\\\\CLAUDE CODE\\\\agent\\\\nul\")",
       "Bash(npx create-next-app:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ninit: Next.js + Docker development environment for VetEvidence\n\n- Next.js 16 with TypeScript, App Router, Tailwind CSS\n- Docker development setup with hot-reload \\(volume mount + polling\\)\n- docker-compose.yml configured for Windows compatibility\n- .env.example with Supabase + Anthropic API key placeholders\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)"
     ]
   }
 }
