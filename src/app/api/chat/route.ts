@@ -4,17 +4,21 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { runAgentLoop, runAgentLoopStreaming } from "@/lib/agent/loop";
+import { runDeepResearch } from "@/lib/agent/deep-research";
+import { analyzeImage } from "@/lib/agent/image-analysis";
 import type { ChatMessage } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // 60 second timeout
+export const maxDuration = 120; // 120 second timeout (deep research needs more time)
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, stream = true } = body as {
+    const { messages, stream = true, mode = "chat", image } = body as {
       messages: ChatMessage[];
       stream?: boolean;
+      mode?: "chat" | "deep_research" | "image_analysis";
+      image?: { data: string; media_type: string };
     };
 
     // Validate input
@@ -44,6 +48,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Route to appropriate handler based on mode
+    if (mode === "deep_research") {
+      const result = await runDeepResearch({ messages });
+      return NextResponse.json({
+        content: result.content,
+        tool_calls: result.toolCalls.map((t) => ({
+          name: t.name,
+          input: t.input,
+        })),
+        citations: result.citations,
+        token_usage: result.tokenUsage,
+        latency_ms: result.latencyMs,
+        mode: "deep_research",
+      });
+    }
+
+    if (mode === "image_analysis" && image) {
+      const result = await analyzeImage({
+        imageData: image.data,
+        mediaType: image.media_type as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+        prompt: messages[messages.length - 1].content,
+      });
+      return NextResponse.json({
+        content: result.content,
+        tool_calls: result.toolCalls.map((t) => ({
+          name: t.name,
+          input: t.input,
+        })),
+        citations: result.citations,
+        token_usage: result.tokenUsage,
+        latency_ms: result.latencyMs,
+        mode: "image_analysis",
+      });
+    }
+
+    // Standard chat mode
     if (stream) {
       // Streaming response (SSE)
       const readableStream = runAgentLoopStreaming({ messages });
