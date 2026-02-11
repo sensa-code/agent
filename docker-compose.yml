@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app                # Hot-reload: mount local source into container
+      - /app/node_modules     # Prevent local node_modules from overriding container's
+      - /app/.next            # Prevent .next cache conflicts
+    env_file:
+      - .env.local
+    environment:
+      - WATCHPACK_POLLING=true      # Required for Windows volume mount file watching
+      - CHOKIDAR_USEPOLLING=true    # Fallback polling for older watchers
+    restart: unless-stopped
