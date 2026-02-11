@@ -35,7 +35,7 @@ export const drugLookupSchema: ToolDefinition = {
   },
 };
 
-/** 執行藥物查詢 */
+/** 執行藥物查詢 — 直接查詢 public.drugs 表 */
 export async function drugLookup(input: {
   drug_name: string;
   species?: string;
@@ -44,35 +44,36 @@ export async function drugLookup(input: {
   const { drug_name, species, info_type = "full" } = input;
 
   try {
-    // Use vet_ai.search_drugs cross-schema function
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data, error } = await supabase.rpc("search_drugs", {
-      drug_name: drug_name,
-      search_species: species || null,
-    }, { schema: "vet_ai" } as unknown as undefined);
+
+    // 直接查詢 public.drugs 表（vet_ai.search_drugs RPC 因 schema 問題不穩定）
+    const { data, error } = await supabase
+      .from("drugs")
+      .select("*")
+      .or(`name_en.ilike.%${drug_name}%,name_zh.ilike.%${drug_name}%`)
+      .limit(10);
 
     if (error) {
       console.error("Drug lookup error:", error);
       return { found: false, drug_name, results: [] };
     }
 
+    // 如果 name 搜尋沒結果，嘗試 trade_names 搜尋
     if (!data || data.length === 0) {
-      // Fallback: try direct query on public.drugs
-      const publicClient = createClient(supabaseUrl, supabaseKey);
-      const { data: directData, error: directError } = await publicClient
+      const { data: tradeData, error: tradeError } = await supabase
         .from("drugs")
         .select("*")
-        .or(`name_en.ilike.%${drug_name}%,name_zh.ilike.%${drug_name}%`)
-        .limit(5);
+        .contains("trade_names", [drug_name])
+        .limit(10);
 
-      if (directError || !directData || directData.length === 0) {
+      if (tradeError || !tradeData || tradeData.length === 0) {
         return { found: false, drug_name, results: [] };
       }
 
       return {
         found: true,
         drug_name,
-        results: directData.map(mapDrugRow),
+        results: tradeData.map(mapDrugRow),
       };
     }
 

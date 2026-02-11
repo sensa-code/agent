@@ -40,7 +40,7 @@ export async function runAgentLoop(
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250514",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 4096,
       system: getSystemPrompt(),
       tools: TOOL_DEFINITIONS,
@@ -138,7 +138,7 @@ export function runAgentLoopStreaming(
       try {
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           const stream = anthropic.messages.stream({
-            model: "claude-sonnet-4-5-20250514",
+            model: "claude-sonnet-4-5-20250929",
             max_tokens: 4096,
             system: getSystemPrompt(),
             tools: TOOL_DEFINITIONS,
