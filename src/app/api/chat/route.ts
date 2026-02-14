@@ -11,7 +11,7 @@ import { calculateCost, trackCost } from "@/lib/monitoring/cost-tracker";
 import type { ChatMessage } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120; // 120 second timeout (deep research needs more time)
+export const maxDuration = 60; // Vercel Pro max 60s
 
 export async function POST(request: NextRequest) {
   try {

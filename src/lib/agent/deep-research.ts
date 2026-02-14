@@ -12,10 +12,12 @@ import type {
   Citation,
 } from "./types";
 
-const MAX_DEEP_ROUNDS = 8; // DeepResearch allows more rounds
+const MAX_DEEP_ROUNDS = 4; // DeepResearch allows more rounds (reduced for Vercel 60s limit)
 const DEEP_RESEARCH_MODEL = "claude-sonnet-4-5-20250929";
 
-const anthropic = new Anthropic();
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 /**
  * DeepResearch — 多輪 RAG 深度研究模式

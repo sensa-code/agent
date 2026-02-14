@@ -11,7 +11,9 @@ import type {
   Citation,
 } from "./types";
 
-const anthropic = new Anthropic();
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 export interface ImageAnalysisRequest {
   imageData: string;        // base64 encoded

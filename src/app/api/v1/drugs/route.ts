@@ -10,6 +10,7 @@ import {
 import { drugLookup } from "@/lib/tools/drug-lookup";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 /**
  * GET /api/v1/drugs?name=Amoxicillin&species=canine

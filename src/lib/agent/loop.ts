@@ -15,7 +15,9 @@ import type {
 
 const MAX_TOOL_ROUNDS = 5; // 最多 5 輪 tool 呼叫
 
-const anthropic = new Anthropic();
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
 /**
  * Agent Loop — 持續執行直到 Claude 回傳 end_turn
