@@ -122,5 +122,67 @@ export async function GET() {
     };
   }
 
+  // 5. Test: manual embedding + RPC with threshold 0.5 (same as search-vet-literature.ts)
+  if (openaiKey && supabaseUrl && supabaseKey) {
+    try {
+      // Generate embedding
+      const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "text-embedding-3-small",
+          input: "canine CKD treatment",
+        }),
+      });
+      const embData = await embRes.json();
+      const embedding = embData.data[0].embedding;
+
+      // Same RPC call as search-vet-literature.ts
+      const supabase = createClient(supabaseUrl!, supabaseKey!);
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("rag_match_documents", {
+        query_embedding: embedding,
+        match_count: 2,
+        match_threshold: 0.5,
+        filter_category: null,
+        filter_species: null,
+      });
+
+      checks.manual_rag_test = {
+        status: rpcErr ? "ERROR" : "OK",
+        error: rpcErr?.message,
+        embedding_length: embedding.length,
+        results: rpcData?.length || 0,
+        data: (rpcData || []).map((d: Record<string, unknown>) => ({
+          title: d.title,
+          similarity: d.similarity,
+        })),
+      };
+
+      // Also test with species filter = "canine" (which searchVetLiterature would pass)
+      const { data: rpcData2, error: rpcErr2 } = await supabase.rpc("rag_match_documents", {
+        query_embedding: embedding,
+        match_count: 2,
+        match_threshold: 0.5,
+        filter_category: null,
+        filter_species: "canine",
+      });
+
+      checks.manual_rag_with_species = {
+        status: rpcErr2 ? "ERROR" : "OK",
+        error: rpcErr2?.message,
+        results: rpcData2?.length || 0,
+        data: (rpcData2 || []).map((d: Record<string, unknown>) => ({
+          title: d.title,
+          similarity: d.similarity,
+        })),
+      };
+    } catch (err) {
+      checks.manual_rag_test = { status: "EXCEPTION", error: String(err) };
+    }
+  }
+
   return NextResponse.json(checks);
 }
