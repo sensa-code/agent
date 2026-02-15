@@ -101,7 +101,7 @@ async function keywordFallbackSearch(
       match_count: maxResults,
       match_threshold: 0.0,
       filter_category: category && category !== "all" ? category : null,
-      filter_species: species && species !== "all" ? species : null,
+      filter_species: null,  // 暫時停用 species 過濾（資料庫 species 欄位為空）
     });
 
     if (error) {
@@ -140,12 +140,14 @@ export async function searchVetLiterature(input: {
   if (embedding) {
     try {
       const supabase = createClient(supabaseUrl, supabaseKey);
+      // 注意：目前 RAG 資料庫中所有文獻的 species 欄位為空陣列，
+      // 故不傳 filter_species（否則會過濾掉所有結果）
       const { data, error } = await supabase.rpc("rag_match_documents", {
         query_embedding: embedding,
         match_count: max_results,
         match_threshold: 0.5,
         filter_category: category && category !== "all" ? category : null,
-        filter_species: species && species !== "all" ? species : null,
+        filter_species: null,  // 暫時停用 species 過濾（資料庫 species 欄位為空）
       });
 
       if (error) {
