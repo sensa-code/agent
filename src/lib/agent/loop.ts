@@ -103,11 +103,14 @@ export async function runAgentLoop(
     // 截斷前輪 tool results，降低 conversation history token 消耗
     const optimizedMessages = round > 0 ? truncatePreviousToolResults(messages) : messages;
 
+    // 首輪強制使用工具（tool_choice: any），後續輪次由 Claude 自行決定
+    const toolChoice = (tools && round === 0) ? { type: "any" as const } : undefined;
+
     const response = await anthropic.messages.create({
       model,
       max_tokens: 4096,
       system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-      ...(tools ? { tools } : {}),
+      ...(tools ? { tools, ...(toolChoice ? { tool_choice: toolChoice } : {}) } : {}),
       messages: optimizedMessages,
     });
 
@@ -217,11 +220,14 @@ export function runAgentLoopStreaming(
           // 截斷前輪 tool results，降低 conversation history token 消耗
           const optimizedMessages = round > 0 ? truncatePreviousToolResults(messages) : messages;
 
+          // 首輪強制使用工具（tool_choice: any），後續輪次由 Claude 自行決定
+          const streamToolChoice = (streamTools && round === 0) ? { type: "any" as const } : undefined;
+
           const stream = anthropic.messages.stream({
             model,
             max_tokens: 4096,
             system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-            ...(streamTools ? { tools: streamTools } : {}),
+            ...(streamTools ? { tools: streamTools, ...(streamToolChoice ? { tool_choice: streamToolChoice } : {}) } : {}),
             messages: optimizedMessages,
           });
 
