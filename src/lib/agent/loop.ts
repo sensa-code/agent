@@ -20,7 +20,7 @@ const MAX_PREV_TOOL_RESULT_CHARS = 1000; // 前輪 tool result 截斷上限（co
 
 // 模型選擇：Fast mode (SOAP/住院摘要) 用 Haiku — 1/3 價格、4-5x 速度，解決 timeout
 const MODEL_SONNET = "claude-sonnet-4-5-20250929";
-const MODEL_HAIKU = "claude-haiku-4-5-20250929";
+const MODEL_HAIKU = "claude-haiku-4-5-20251001";
 
 /** 截斷 tool result 字串，避免超大 JSON 消耗 token */
 function truncateToolResult(result: unknown, maxChars: number = MAX_TOOL_RESULT_CHARS): string {
