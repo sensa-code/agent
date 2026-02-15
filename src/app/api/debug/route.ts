@@ -3,6 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { searchVetLiterature } from "@/lib/tools/search-vet-literature";
 
 export const runtime = "nodejs";
 
@@ -96,6 +97,29 @@ export async function GET() {
     }
   } else {
     checks.supabase_rag = { status: "SKIPPED", reason: "Missing Supabase env" };
+  }
+
+  // 4. Test searchVetLiterature function directly (same as tool call)
+  try {
+    const ragResults = await searchVetLiterature({
+      query: "canine CKD treatment",
+      species: "canine",
+      max_results: 2,
+    });
+    checks.search_vet_literature = {
+      status: "OK",
+      results: ragResults.length,
+      data: ragResults.map((r) => ({
+        title: r.title,
+        similarity: r.similarity,
+        source: r.source,
+      })),
+    };
+  } catch (err) {
+    checks.search_vet_literature = {
+      status: "EXCEPTION",
+      error: String(err),
+    };
   }
 
   return NextResponse.json(checks);
