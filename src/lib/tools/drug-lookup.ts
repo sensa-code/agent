@@ -12,23 +12,23 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export const drugLookupSchema: ToolDefinition = {
   name: "drug_lookup",
   description:
-    "查詢獸醫藥物資訊，包含適應症、劑量、禁忌症、交互作用、副作用等。支援中英文藥名搜尋。",
+    "查詢獸醫藥物(適應症/劑量/禁忌/交互作用)。支援中英文藥名。",
   input_schema: {
     type: "object" as const,
     properties: {
       drug_name: {
         type: "string",
-        description: "藥物名稱（通用名或商品名，中英文皆可）",
+        description: "藥物名稱(中英文皆可)",
       },
       species: {
         type: "string",
         enum: ["canine", "feline", "rabbit", "avian", "reptile", "exotic"],
-        description: "目標物種（不同物種劑量不同）",
+        description: "目標物種",
       },
       info_type: {
         type: "string",
         enum: ["full", "dosage", "contraindications", "interactions", "side_effects"],
-        description: "需要的資訊類型",
+        description: "資訊類型",
       },
     },
     required: ["drug_name"],

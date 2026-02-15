@@ -8,14 +8,14 @@ import type { ToolDefinition } from "@/lib/agent/types";
 export const differentialDiagnosisSchema: ToolDefinition = {
   name: "differential_diagnosis",
   description:
-    "根據臨床症狀、物種、年齡、品種產生鑑別診斷清單。按可能性排序並標註緊急程度。",
+    "依症狀/物種/年齡/品種產生鑑別診斷清單，按可能性排序。",
   input_schema: {
     type: "object" as const,
     properties: {
       symptoms: {
         type: "array",
         items: { type: "string" },
-        description: "臨床症狀列表（英文），例如 ['polyuria', 'polydipsia', 'weight loss']",
+        description: "症狀列表(英文)，如 ['polyuria','polydipsia']",
       },
       species: {
         type: "string",
@@ -24,7 +24,7 @@ export const differentialDiagnosisSchema: ToolDefinition = {
       },
       age_years: {
         type: "number",
-        description: "年齡（歲）",
+        description: "年齡(歲)",
       },
       breed: {
         type: "string",
@@ -33,11 +33,11 @@ export const differentialDiagnosisSchema: ToolDefinition = {
       sex: {
         type: "string",
         enum: ["male_intact", "male_neutered", "female_intact", "female_spayed"],
-        description: "性別和絕育狀態",
+        description: "性別/絕育",
       },
       additional_info: {
         type: "string",
-        description: "額外臨床資訊（病史、檢驗結果等）",
+        description: "額外臨床資訊",
       },
     },
     required: ["symptoms", "species"],

@@ -12,18 +12,18 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export const searchVetLiteratureSchema: ToolDefinition = {
   name: "search_vet_literature",
   description:
-    "搜尋獸醫文獻資料庫（英文教科書為主），包含期刊論文、教科書內容、臨床指引。根據問題語意檢索最相關的文獻段落。回傳結果包含來源引用資訊。**重要：query 必須使用英文**，因為資料庫內容以英文為主。",
+    "搜尋獸醫文獻(英文教科書/期刊/指引)。query必須英文。回傳含引用。",
   input_schema: {
     type: "object" as const,
     properties: {
       query: {
         type: "string",
-        description: "搜尋查詢（必須使用英文），例如 'feline diabetes mellitus management', 'canine chronic kidney disease treatment'",
+        description: "英文搜尋查詢，如 'canine CKD treatment'",
       },
       species: {
         type: "string",
         enum: ["canine", "feline", "rabbit", "avian", "reptile", "exotic", "all"],
-        description: "動物物種篩選",
+        description: "物種篩選",
       },
       category: {
         type: "string",
@@ -31,11 +31,11 @@ export const searchVetLiteratureSchema: ToolDefinition = {
           "internal_medicine", "surgery", "dermatology", "oncology",
           "emergency", "pharmacology", "nutrition", "textbook", "all",
         ],
-        description: "專科類別篩選",
+        description: "專科篩選",
       },
       max_results: {
         type: "number",
-        description: "回傳結果數量，預設 5",
+        description: "結果數量(預設3)",
       },
     },
     required: ["query"],
@@ -85,7 +85,7 @@ async function keywordFallbackSearch(
   query: string,
   species?: string,
   category?: string,
-  maxResults: number = 5,
+  maxResults: number = 3,
 ): Promise<RAGSearchResult[]> {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -97,7 +97,7 @@ async function keywordFallbackSearch(
     const normalizedVec = randomVec.map(v => v / norm);
 
     const { data, error } = await supabase.rpc("rag_match_documents", {
-      query_embedding: JSON.stringify(normalizedVec),
+      query_embedding: normalizedVec,
       match_count: maxResults,
       match_threshold: 0.0,
       filter_category: category && category !== "all" ? category : null,
@@ -111,7 +111,7 @@ async function keywordFallbackSearch(
 
     return (data || []).map((doc: Record<string, unknown>, index: number) => ({
       id: index + 1,
-      content: (doc.content as string) || "",
+      content: ((doc.content as string) || "").substring(0, 500),
       source: ((doc.metadata as Record<string, unknown>)?.source as string) || "Knowledge Base",
       title: (doc.title as string) || "Untitled",
       year: (doc.metadata as Record<string, unknown>)?.year as number | undefined,
@@ -131,7 +131,7 @@ export async function searchVetLiterature(input: {
   category?: string;
   max_results?: number;
 }): Promise<RAGSearchResult[]> {
-  const { query, species, category, max_results = 5 } = input;
+  const { query, species, category, max_results = 3 } = input;
 
   // 1. 嘗試生成 embedding
   const embedding = await generateEmbedding(query);
@@ -141,7 +141,7 @@ export async function searchVetLiterature(input: {
     try {
       const supabase = createClient(supabaseUrl, supabaseKey);
       const { data, error } = await supabase.rpc("rag_match_documents", {
-        query_embedding: JSON.stringify(embedding),
+        query_embedding: embedding,
         match_count: max_results,
         match_threshold: 0.5,
         filter_category: category && category !== "all" ? category : null,
@@ -154,7 +154,7 @@ export async function searchVetLiterature(input: {
       } else if (data && data.length > 0) {
         return (data || []).map((doc: Record<string, unknown>, index: number) => ({
           id: index + 1,
-          content: (doc.content as string) || "",
+          content: ((doc.content as string) || "").substring(0, 500),
           source: ((doc.metadata as Record<string, unknown>)?.source as string) || "Unknown",
           title: (doc.title as string) || "Untitled",
           year: (doc.metadata as Record<string, unknown>)?.year as number | undefined,

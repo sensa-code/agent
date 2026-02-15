@@ -13,18 +13,18 @@ import { calculateIRISStaging } from "@/lib/calculators/iris-staging";
 export const clinicalCalculatorSchema: ToolDefinition = {
   name: "clinical_calculator",
   description:
-    "獸醫臨床計算器：藥物劑量、輸液速率、能量需求 (RER)、中毒劑量評估、CKD IRIS 分期。根據臨床參數進行精確計算。",
+    "臨床計算：藥物劑量/輸液速率/RER/中毒評估/IRIS分期。",
   input_schema: {
     type: "object" as const,
     properties: {
       calculator_type: {
         type: "string",
         enum: ["drug_dose", "fluid_rate", "rer", "toxicity", "iris_staging"],
-        description: "計算器類型",
+        description: "計算類型",
       },
       parameters: {
         type: "object",
-        description: "計算參數（依計算器類型不同）",
+        description: "計算參數",
         properties: {
           // Common
           weight_kg: { type: "number", description: "體重 (kg)" },

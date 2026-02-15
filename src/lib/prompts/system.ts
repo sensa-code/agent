@@ -1,5 +1,5 @@
 // ============================================================================
-// VetEvidence — System Prompt 管理
+// VetEvidence — System Prompt 管理（已精簡，降低 ~40% token 消耗）
 // ============================================================================
 
 import {
@@ -9,6 +9,10 @@ import {
   DISCLAIMER,
 } from "./safety-rules";
 import type { PatientContext, AIMode } from "@/lib/agent/types";
+
+// ============================================================================
+// Public API
+// ============================================================================
 
 /**
  * 取得基礎 system prompt（不含病患上下文）
@@ -25,7 +29,11 @@ export function getSystemPromptWithContext(
   context?: PatientContext,
   mode?: AIMode
 ): string {
-  const base = getBaseSystemPrompt();
+  // 從 context 中提取物種和慢性病資訊，用於條件式安全規則
+  const species = context?.patient?.species;
+  const chronicConditions = context?.patient?.chronic_conditions;
+
+  const base = getBaseSystemPrompt({ species, chronicConditions, mode });
 
   if (!context || !context.patient) {
     return base;
@@ -35,73 +43,137 @@ export function getSystemPromptWithContext(
   return `${base}\n\n${contextSection}`;
 }
 
+// ============================================================================
+// Base System Prompt（依 mode 動態組裝）
+// ============================================================================
+
+interface PromptOptions {
+  species?: string;
+  chronicConditions?: string[];
+  mode?: AIMode;
+}
+
 /**
- * 基礎 system prompt
+ * 基礎 system prompt — 依 mode 和病患屬性動態組裝
+ * - chat/consultation: 完整 prompt（含工具規則、引用規則、安全規則）
+ * - soap_structure / hospitalization_summary: 精簡版（無工具規則）
+ * - 安全規則依物種和慢性病條件式包含
  */
-function getBaseSystemPrompt(): string {
-  return `你是 VetEvidence，一位專業的獸醫臨床決策支援 AI。
+function getBaseSystemPrompt(options?: PromptOptions): string {
+  const mode = options?.mode;
+  const isFastMode = mode === "soap_structure" || mode === "hospitalization_summary";
 
-## 核心原則
-1. **證據導向**：所有回答必須基於文獻或資料庫查詢結果，不做無根據的推測
-2. **引用來源**：每個關鍵論點都必須附上來源引用 [來源編號]
-3. **物種差異**：永遠注意物種特異性，貓和狗的用藥差異巨大
-4. **安全優先**：對於可能危及動物生命的建議，必須加上警告
-5. **專業謙遜**：當證據不足時，明確表示不確定性
-6. **病患個案化**：當提供病患上下文時，所有建議必須考量個體狀況（過敏、慢性病、目前用藥、檢驗結果）
+  const sections: string[] = [];
 
-## 回答格式
-- 先直接回答問題
-- 提供相關文獻證據
-- 列出引用來源（使用 [1], [2], [3]... 格式）
-- 如有需要，建議進一步檢查或轉診
-- 若有病患上下文，需特別指出與該病患相關的警告（藥物過敏、交互作用、檢驗異常等）
+  // ── 角色定義 + 核心原則 ──
+  sections.push(`你是 VetEvidence，獸醫臨床決策支援 AI。
 
-## 工具使用規則
-- 收到任何臨床問題時，**必須先使用 search_vet_literature** 搜尋文獻，不可跳過
-- 涉及藥物時，**必須使用 drug_lookup** 查詢藥物資訊
-- 需要計算劑量、輸液速率、能量需求、中毒評估、IRIS 分期時，**使用 clinical_calculator**
-- 詢問臨床 SOP 或治療指引時，**使用 get_clinical_protocol**
-- 需要鑑別診斷時，**使用 differential_diagnosis**（提供症狀列表、物種、年齡、品種）
-- 可同時呼叫多個工具獲取完整資訊
-- 如果工具回傳空結果，誠實告知查無資料，不要編造
-- **重要：search_vet_literature 的 query 參數必須使用英文**，因為文獻資料庫以英文教科書為主
-  - 例如：使用者問「貓的糖尿病如何管理？」→ query 應為 "feline diabetes mellitus management"
+## 原則
+1. 證據導向：回答基於文獻/資料庫，不推測
+2. 引用：關鍵論點附 [N] 來源，末尾列完整清單
+3. 物種差異：注意物種特異性用藥
+4. 安全優先：危及生命須警告
+5. 不確定時明確表示
+6. 有病患上下文時考量個體狀況（過敏、慢性病、用藥、檢驗）`);
 
-## 引用格式（嚴格遵守）
-- **每個回答中引用文獻時，必須使用 [1], [2], [3] 等數字標記**
-- 即使只有一個來源，也必須加上 [1] 標記
-- 在回答末尾列出完整引用來源清單
-- 格式範例：「根據文獻 [1]，犬的慢性腎病...」
-- 如果工具返回了結果，**每個要點都必須附上 [N] 引用編號**
+  // ── 回答格式（所有模式都需要） ──
+  sections.push(`## 回答格式
+- 先直接回答，附文獻證據，每要點附 [N] 引用
+- 末尾列完整來源清單（[N] 書名 (年份)）
+- 有上下文時指出相關警告（過敏、交互作用、異常值）
+- 必要時建議進一步檢查`);
 
-## 重要安全規則
+  // ── 工具規則（僅 chat/consultation 模式，fast mode 不含工具） ──
+  if (!isFastMode) {
+    sections.push(`## 工具（必須使用）
+**重要：你必須在回答前使用工具查詢。禁止僅憑自身知識回答臨床問題。**
+- 臨床問題→必須先呼叫 search_vet_literature（query 用英文）
+- 藥物問題→必須呼叫 drug_lookup
+- 劑量/輸液/RER/IRIS→用 clinical_calculator
+- SOP→用 get_clinical_protocol；鑑別診斷→用 differential_diagnosis
+- **首輪即同時呼叫所有需要的工具（parallel tool calls），避免多輪來回**
+- 空結果誠實告知不編造`);
+  }
 
-### 🚫 貓的絕對禁用藥物
-${CAT_CONTRAINDICATED_DRUGS.map((d) => `- **${d.drug}**：${d.reason}`).join("\n")}
+  // ── 安全規則（條件式） ──
+  const safetyLines = buildSafetyRules(options);
+  if (safetyLines) {
+    sections.push(safetyLines);
+  }
 
-### ⚠️ MDR1 基因相關犬種警告
-以下犬種可能攜帶 MDR1 基因突變：${MDR1_WARNING.breeds.join("、")}
-危險藥物：${MDR1_WARNING.drugs.join("、")}
-${MDR1_WARNING.description}
+  // ── 免責聲明 ──
+  sections.push(`## 免責\n${DISCLAIMER}`);
 
-### 🔬 腎病動物用藥
-${CKD_DRUG_WARNINGS.description}
-- 避免：${CKD_DRUG_WARNINGS.avoid.join("、")}
-- 需調整劑量：${CKD_DRUG_WARNINGS.adjustDose.join("、")}
-
-## 免責聲明
-${DISCLAIMER}`;
+  return sections.join("\n\n");
 }
 
 // ============================================================================
-// 病患上下文 → 結構化文字
+// 安全規則 — 依物種 & 慢性病條件式包含
+// ============================================================================
+
+/**
+ * 根據物種和慢性病狀況，選擇性包含安全規則
+ * - 無 context（泛用查詢）：包含所有安全規則
+ * - 犬：包含 MDR1 + CKD（如有腎病）
+ * - 貓：包含貓禁用藥 + CKD（如有腎病）
+ * - 其他：僅 CKD（如有腎病）
+ */
+function buildSafetyRules(options?: PromptOptions): string | null {
+  const species = options?.species;
+  const conditions = options?.chronicConditions || [];
+
+  // 判斷是否有腎病相關慢性病
+  const hasCKD =
+    !species || // 無物種 = 泛用，包含所有
+    conditions.some(
+      (c) =>
+        c.includes("CKD") ||
+        c.includes("腎") ||
+        c.toLowerCase().includes("kidney") ||
+        c.toLowerCase().includes("renal")
+    );
+
+  // 判斷物種
+  const isCat = !species || species === "貓" || species.toLowerCase().includes("feline") || species.toLowerCase().includes("cat");
+  const isDog = !species || species === "犬" || species.toLowerCase().includes("canine") || species.toLowerCase().includes("dog");
+
+  const rules: string[] = [];
+
+  // 貓禁用藥
+  if (isCat) {
+    const catDrugs = CAT_CONTRAINDICATED_DRUGS.map(
+      (d) => `- **${d.drug}**：${d.reason}`
+    ).join("\n");
+    rules.push(`### 貓禁用藥\n${catDrugs}`);
+  }
+
+  // MDR1
+  if (isDog) {
+    rules.push(
+      `### MDR1 犬種警告\n犬種：${MDR1_WARNING.breeds.join("、")}\n藥物：${MDR1_WARNING.drugs.join("、")}\n${MDR1_WARNING.description}`
+    );
+  }
+
+  // CKD
+  if (hasCKD) {
+    rules.push(
+      `### 腎病用藥\n${CKD_DRUG_WARNINGS.description}\n- 避免：${CKD_DRUG_WARNINGS.avoid.join("、")}\n- 調整劑量：${CKD_DRUG_WARNINGS.adjustDose.join("、")}`
+    );
+  }
+
+  if (rules.length === 0) return null;
+  return `## 安全規則\n${rules.join("\n\n")}`;
+}
+
+// ============================================================================
+// 病患上下文 → 精簡結構化文字
 // ============================================================================
 
 /**
  * 將 EMR 傳來的病患上下文轉為 system prompt 可用的結構化文字
  * 設計原則：
- * 1. 僅包含有值的欄位，避免「無」、「N/A」佔用 token
- * 2. 用清楚的 Markdown 格式讓 Claude 容易解析
+ * 1. 僅包含有值的欄位，避免佔用 token
+ * 2. 用緊湊的 pipe-separated 格式（比 Markdown 列表省 ~30% token）
  * 3. 針對不同 mode 強調不同面向
  */
 function buildContextPrompt(
@@ -110,57 +182,55 @@ function buildContextPrompt(
 ): string {
   const sections: string[] = [];
 
-  sections.push("---\n## 📋 當前病患資訊（來自 EMR 系統，請結合此資訊回答）");
+  sections.push("---\n## 病患資訊");
 
-  // ── 病患基本資料 ──
+  // ── 病患基本資料（pipe-separated 緊湊格式） ──
   const p = context.patient;
   if (p) {
-    const lines: string[] = [];
-    lines.push(`- **姓名**：${p.name}`);
-    lines.push(`- **物種**：${p.species}`);
-    if (p.breed) lines.push(`- **品種**：${p.breed}`);
-    if (p.sex) lines.push(`- **性別**：${p.sex}`);
-    if (p.is_neutered !== undefined) lines.push(`- **絕育**：${p.is_neutered ? "已絕育" : "未絕育"}`);
-    if (p.age_description) lines.push(`- **年齡**：${p.age_description}`);
-    if (p.weight_kg) lines.push(`- **體重**：${p.weight_kg} kg`);
+    const basic: string[] = [p.name, p.species];
+    if (p.breed) basic.push(p.breed);
+    if (p.sex) basic.push(p.sex);
+    if (p.is_neutered !== undefined) basic.push(p.is_neutered ? "已絕育" : "未絕育");
+    if (p.age_description) basic.push(p.age_description);
+    if (p.weight_kg) basic.push(`${p.weight_kg}kg`);
+
+    const lines: string[] = [basic.join(" | ")];
     if (p.allergies && p.allergies.length > 0) {
-      lines.push(`- **⚠️ 過敏**：${p.allergies.join("、")}`);
+      lines.push(`⚠️過敏: ${p.allergies.join("、")}`);
     }
     if (p.chronic_conditions && p.chronic_conditions.length > 0) {
-      lines.push(`- **⚠️ 慢性病**：${p.chronic_conditions.join("、")}`);
+      lines.push(`⚠️慢性病: ${p.chronic_conditions.join("、")}`);
     }
-    sections.push(`### 🐾 病患\n${lines.join("\n")}`);
+    sections.push(`### 病患\n${lines.join("\n")}`);
   }
 
   // ── 本次就診 ──
   const mr = context.medical_record;
   if (mr) {
-    const lines: string[] = [];
-    lines.push(`- **就診日期**：${mr.visit_date}`);
-    lines.push(`- **就診類型**：${mr.visit_type}`);
-    if (mr.chief_complaint) lines.push(`- **主訴**：${mr.chief_complaint}`);
-    lines.push(`- **狀態**：${mr.status}`);
-    sections.push(`### 🏥 本次就診\n${lines.join("\n")}`);
+    const parts: string[] = [mr.visit_date, mr.visit_type];
+    if (mr.chief_complaint) parts.push(`主訴: ${mr.chief_complaint}`);
+    parts.push(mr.status);
+    sections.push(`### 就診\n${parts.join(" | ")}`);
   }
 
-  // ── SOAP 記錄 ──
+  // ── SOAP 記錄（key=value 格式取代 JSON.stringify） ──
   const soap = context.soap_notes;
   if (soap) {
     const lines: string[] = [];
     if (soap.subjective && Object.keys(soap.subjective).length > 0) {
-      lines.push(`- **S (主觀)**：${JSON.stringify(soap.subjective)}`);
+      lines.push(`S: ${flattenObj(soap.subjective)}`);
     }
     if (soap.objective && Object.keys(soap.objective).length > 0) {
-      lines.push(`- **O (客觀)**：${JSON.stringify(soap.objective)}`);
+      lines.push(`O: ${flattenObj(soap.objective)}`);
     }
     if (soap.assessment && Object.keys(soap.assessment).length > 0) {
-      lines.push(`- **A (評估)**：${JSON.stringify(soap.assessment)}`);
+      lines.push(`A: ${flattenObj(soap.assessment)}`);
     }
     if (soap.plan && Object.keys(soap.plan).length > 0) {
-      lines.push(`- **P (計畫)**：${JSON.stringify(soap.plan)}`);
+      lines.push(`P: ${flattenObj(soap.plan)}`);
     }
     if (lines.length > 0) {
-      sections.push(`### 📝 SOAP 記錄\n${lines.join("\n")}`);
+      sections.push(`### SOAP\n${lines.join("\n")}`);
     }
   }
 
@@ -171,59 +241,55 @@ function buildContextPrompt(
       const type = d.diagnosis_type ? ` [${d.diagnosis_type}]` : "";
       return `- ${d.diagnosis_name}${en}${type}`;
     });
-    sections.push(`### 🔍 診斷\n${lines.join("\n")}`);
+    sections.push(`### 診斷\n${lines.join("\n")}`);
   }
 
-  // ── 目前處方 ──
+  // ── 處方（緊湊格式） ──
   if (context.prescriptions && context.prescriptions.length > 0) {
     const lines = context.prescriptions.map((rx) => {
-      const parts: string[] = [`**${rx.drug_name}**`];
-      if (rx.drug_name_en) parts[0] += ` (${rx.drug_name_en})`;
-      if (rx.dosage && rx.dosage_unit) parts.push(`${rx.dosage} ${rx.dosage_unit}`);
+      const parts: string[] = [rx.drug_name];
+      if (rx.drug_name_en) parts[0] += `(${rx.drug_name_en})`;
+      if (rx.dosage && rx.dosage_unit) parts.push(`${rx.dosage}${rx.dosage_unit}`);
       if (rx.frequency) parts.push(rx.frequency);
       if (rx.route) parts.push(rx.route);
-      if (rx.duration_days) parts.push(`${rx.duration_days}天`);
-      if (rx.instructions) parts.push(`| ${rx.instructions}`);
+      if (rx.duration_days) parts.push(`${rx.duration_days}d`);
+      if (rx.instructions) parts.push(`(${rx.instructions})`);
       return `- ${parts.join(" ")}`;
     });
-    sections.push(
-      `### 💊 目前處方（回答時請檢查藥物交互作用與過敏風險）\n${lines.join("\n")}`
-    );
+    sections.push(`### 處方（檢查交互作用與過敏）\n${lines.join("\n")}`);
   }
 
-  // ── 檢驗報告 ──
+  // ── 檢驗報告（pipe 格式） ──
   if (context.lab_orders && context.lab_orders.length > 0) {
     const lines = context.lab_orders.map((lab) => {
-      const parts: string[] = [`**${lab.test_name}**`];
+      const parts: string[] = [lab.test_name];
       if (lab.test_category) parts.push(`[${lab.test_category}]`);
-      parts.push(`狀態: ${lab.status}`);
-      if (lab.result) parts.push(`結果: ${lab.result}`);
-      if (lab.notes) parts.push(`備註: ${lab.notes}`);
-      if (lab.created_at) parts.push(`日期: ${lab.created_at.split("T")[0]}`);
+      parts.push(lab.status);
+      if (lab.result) parts.push(lab.result);
+      if (lab.notes) parts.push(lab.notes);
+      if (lab.created_at) parts.push(lab.created_at.split("T")[0]);
       return `- ${parts.join(" | ")}`;
     });
-    sections.push(
-      `### 🔬 檢驗報告（回答時請參考檢驗結果，標示異常值並解讀臨床意義）\n${lines.join("\n")}`
-    );
+    sections.push(`### 檢驗（標示異常值並解讀）\n${lines.join("\n")}`);
   }
 
-  // ── 住院資訊（hospitalization_summary 模式） ──
+  // ── 住院資訊 ──
   if (context.hospitalization) {
     const h = context.hospitalization;
-    const lines: string[] = [];
-    lines.push(`- **入院日期**：${h.admission_date}`);
-    lines.push(`- **住院天數**：${h.days_hospitalized} 天`);
-    if (h.diagnosis) lines.push(`- **入院診斷**：${h.diagnosis}`);
-    lines.push(`- **CPR 狀態**：${h.cpr_status}`);
-    lines.push(`- **住院狀態**：${h.status}`);
-    if (h.icu_settings) lines.push(`- **ICU 設定**：${JSON.stringify(h.icu_settings)}`);
-    sections.push(`### 🏨 住院資訊\n${lines.join("\n")}`);
+    const parts: string[] = [
+      `入院: ${h.admission_date}`,
+      `${h.days_hospitalized}天`,
+    ];
+    if (h.diagnosis) parts.push(`診斷: ${h.diagnosis}`);
+    parts.push(`CPR: ${h.cpr_status}`, h.status);
+    if (h.icu_settings) parts.push(`ICU: ${flattenObj(h.icu_settings as Record<string, unknown>)}`);
+    sections.push(`### 住院\n${parts.join(" | ")}`);
   }
 
   // ── 治療醫囑 ──
   if (context.treatment_orders && context.treatment_orders.length > 0) {
     const orderLines = context.treatment_orders.map((order) => {
-      const header = `**${order.order_date}** (${order.status})${order.rer_kcal ? ` RER: ${order.rer_kcal} kcal` : ""}`;
+      const header = `${order.order_date} (${order.status})${order.rer_kcal ? ` RER:${order.rer_kcal}kcal` : ""}`;
       const items = order.items
         .filter((i) => i.is_active)
         .map((i) => {
@@ -235,88 +301,58 @@ function buildContextPrompt(
         });
       return `- ${header}\n${items.join("\n")}`;
     });
-    sections.push(`### 📋 治療醫囑（最近）\n${orderLines.join("\n")}`);
+    sections.push(`### 治療醫囑\n${orderLines.join("\n")}`);
   }
 
-  // ── 治療執行記錄 ──
+  // ── 治療執行記錄（最多 15 筆） ──
   if (context.treatment_executions && context.treatment_executions.length > 0) {
-    // 只取最近 20 筆避免 token 爆炸
-    const recent = context.treatment_executions.slice(0, 20);
+    const recent = context.treatment_executions.slice(0, 15);
     const lines = recent.map((e) => {
-      const date = e.executed_at.split("T")[0];
-      const time = e.executed_at.split("T")[1]?.substring(0, 5) || "";
-      return `- ${date} ${time} | [${e.item_type}] ${e.item_name} → ${e.status}`;
+      const dt = e.executed_at.split("T");
+      const time = dt[1]?.substring(0, 5) || "";
+      return `- ${dt[0]} ${time} [${e.item_type}] ${e.item_name} → ${e.status}`;
     });
-    sections.push(`### ✅ 治療執行記錄（最近）\n${lines.join("\n")}`);
+    sections.push(`### 執行記錄\n${lines.join("\n")}`);
   }
 
-  // ── 模式提示 ──
+  // ── 模式任務提示（壓縮版 JSON 模板） ──
   if (mode === "soap_structure") {
     sections.push(
-      `\n### 📌 任務
-請根據以上病患資訊和醫師的口述記錄，協助結構化 SOAP 記錄。
-
-**重要：回答時，除了文字說明外，你必須在回答末尾包含一個 JSON 區塊（使用 \\\`\\\`\\\`json 標記），格式如下：**
-
-\\\`\\\`\\\`json
-{
-  "structured_soap": {
-    "subjective": {
-      "chief_complaint": "主訴內容",
-      "history": "病史描述",
-      "symptoms": ["症狀1", "症狀2"]
-    },
-    "objective": {
-      "physical_exam": "理學檢查發現",
-      "vital_signs": {},
-      "lab_results": "相關檢驗結果"
-    },
-    "assessment": {
-      "primary_diagnosis": "主要診斷",
-      "differential_diagnosis": ["鑑別診斷1", "鑑別診斷2"],
-      "clinical_reasoning": "臨床推理"
-    },
-    "plan": {
-      "diagnostics": ["建議檢查項目"],
-      "treatment": ["治療計畫"],
-      "monitoring": ["追蹤項目"],
-      "client_education": "飼主衛教"
-    }
-  }
-}
-\\\`\\\`\\\`
-
-務必包含此 JSON 區塊，EMR 系統需要它來結構化記錄。`
+      `\n### 任務：SOAP 結構化
+根據以上資訊整理 SOAP。回答末尾必須附 \`\`\`json 區塊：
+\`\`\`json
+{"structured_soap":{"subjective":{"chief_complaint":"","history":"","symptoms":[]},"objective":{"physical_exam":"","vital_signs":{},"lab_results":""},"assessment":{"primary_diagnosis":"","differential_diagnosis":[],"clinical_reasoning":""},"plan":{"diagnostics":[],"treatment":[],"monitoring":[],"client_education":""}}}
+\`\`\`
+EMR 需要此 JSON 區塊。`
     );
   } else if (mode === "hospitalization_summary") {
     sections.push(
-      `\n### 📌 任務
-請根據以上住院資訊，生成完整的住院摘要報告。
-
-**重要：回答時，除了文字說明外，你必須在回答末尾包含一個 JSON 區塊（使用 \\\`\\\`\\\`json 標記），格式如下：**
-
-\\\`\\\`\\\`json
-{
-  "summary": {
-    "case_overview": "病例概述",
-    "treatment_progress": "治療進展描述",
-    "vital_sign_trends": "生命徵象趨勢",
-    "medication_review": {
-      "current_medications": ["藥物1", "藥物2"],
-      "warnings": ["警告1"],
-      "suggestions": ["建議1"]
-    },
-    "diagnostic_suggestions": ["建議的進一步檢查"],
-    "prognosis_notes": "預後評估"
-  }
-}
-\\\`\\\`\\\`
-
-務必包含此 JSON 區塊，EMR 系統需要它來顯示結構化摘要。
-
-**效能提示**：住院資訊已包含在上方上下文中（病患資料、治療醫囑、治療執行記錄等），請直接根據這些資訊生成摘要，**不需要額外搜尋文獻或使用工具**，除非有明確的臨床問題需要查證。`
+      `\n### 任務：住院摘要
+根據以上住院資訊生成摘要。回答末尾必須附 \`\`\`json 區塊：
+\`\`\`json
+{"summary":{"case_overview":"","treatment_progress":"","vital_sign_trends":"","medication_review":{"current_medications":[],"warnings":[],"suggestions":[]},"diagnostic_suggestions":[],"prognosis_notes":""}}
+\`\`\`
+EMR 需要此 JSON。直接根據上方資訊生成，不需額外使用工具。`
     );
   }
 
   return sections.join("\n\n");
+}
+
+// ============================================================================
+// Utility
+// ============================================================================
+
+/**
+ * 將物件扁平化為 key=value 格式，比 JSON.stringify 節省 token
+ */
+function flattenObj(obj: Record<string, unknown>): string {
+  return Object.entries(obj)
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => {
+      if (Array.isArray(v)) return `${k}=[${v.join(",")}]`;
+      if (typeof v === "object") return `${k}=${JSON.stringify(v)}`;
+      return `${k}=${v}`;
+    })
+    .join(", ");
 }

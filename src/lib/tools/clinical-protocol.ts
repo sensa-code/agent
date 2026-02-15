@@ -12,23 +12,23 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export const clinicalProtocolSchema: ToolDefinition = {
   name: "get_clinical_protocol",
   description:
-    "查詢臨床標準作業流程 (SOP) 和治療指引。可根據疾病名稱、治療類型、物種查詢。",
+    "查詢臨床SOP/治療指引。依疾病、類型、物種查詢。",
   input_schema: {
     type: "object" as const,
     properties: {
       condition: {
         type: "string",
-        description: "疾病或臨床情境名稱（英文），例如 'cardiac arrest', 'diabetic ketoacidosis'",
+        description: "疾病名稱(英文)，如 'cardiac arrest'",
       },
       protocol_type: {
         type: "string",
         enum: ["diagnosis", "treatment", "emergency", "prevention", "monitoring"],
-        description: "Protocol 類型",
+        description: "Protocol類型",
       },
       species: {
         type: "string",
         enum: ["canine", "feline", "rabbit", "avian", "reptile", "exotic"],
-        description: "物種篩選",
+        description: "物種",
       },
     },
     required: ["condition"],

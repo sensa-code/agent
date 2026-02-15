@@ -15,6 +15,50 @@ import type {
 
 const MAX_TOOL_ROUNDS = 3; // 最多 3 輪 tool 呼叫（Vercel Hobby 60s 限制）
 const FAST_MODE_TOOL_ROUNDS = 1; // hospitalization_summary / soap_structure 僅 1 輪工具（已有充足上下文）
+const MAX_TOOL_RESULT_CHARS = 2000; // Tool result 截斷上限（節省 token）
+const MAX_PREV_TOOL_RESULT_CHARS = 1000; // 前輪 tool result 截斷上限（conversation history 節省）
+
+// 模型選擇：Fast mode (SOAP/住院摘要) 用 Haiku — 1/3 價格、4-5x 速度，解決 timeout
+const MODEL_SONNET = "claude-sonnet-4-5-20250929";
+const MODEL_HAIKU = "claude-haiku-4-5-20250929";
+
+/** 截斷 tool result 字串，避免超大 JSON 消耗 token */
+function truncateToolResult(result: unknown, maxChars: number = MAX_TOOL_RESULT_CHARS): string {
+  const json = JSON.stringify(result);
+  if (json.length <= maxChars) return json;
+  return json.substring(0, maxChars) + `...[truncated, ${json.length} total chars]`;
+}
+
+/** 截斷前輪 messages 中的 tool_result，降低 conversation history token 消耗 */
+function truncatePreviousToolResults(
+  messages: Anthropic.Messages.MessageParam[]
+): Anthropic.Messages.MessageParam[] {
+  return messages.map((msg, idx) => {
+    // 只截斷非最後一輪的 user messages（tool_result 以 user role 發送）
+    if (msg.role !== "user" || idx >= messages.length - 2) return msg;
+    if (!Array.isArray(msg.content)) return msg;
+
+    const truncated = msg.content.map((block) => {
+      if (typeof block === "object" && block !== null && "type" in block) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ContentBlockParam union 需要 any 判斷
+        const anyBlock = block as any;
+        if (anyBlock.type === "tool_result") {
+          const tb = block as Anthropic.Messages.ToolResultBlockParam;
+          const content = typeof tb.content === "string" ? tb.content : JSON.stringify(tb.content);
+          if (content.length > MAX_PREV_TOOL_RESULT_CHARS) {
+            return {
+              ...tb,
+              content: content.substring(0, MAX_PREV_TOOL_RESULT_CHARS) + "...[truncated]",
+            };
+          }
+        }
+      }
+      return block;
+    });
+
+    return { ...msg, content: truncated } as Anthropic.Messages.MessageParam;
+  });
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -52,14 +96,19 @@ export async function runAgentLoop(
   const maxRounds = isFastMode ? FAST_MODE_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
   // Fast mode 不提供工具（上下文已足夠），節省 token 和時間
   const tools = isFastMode ? undefined : TOOL_DEFINITIONS;
+  // Fast mode 用 Haiku（更快更便宜），一般模式用 Sonnet（更強推理）
+  const model = isFastMode ? MODEL_HAIKU : MODEL_SONNET;
 
   for (let round = 0; round < maxRounds; round++) {
+    // 截斷前輪 tool results，降低 conversation history token 消耗
+    const optimizedMessages = round > 0 ? truncatePreviousToolResults(messages) : messages;
+
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model,
       max_tokens: 4096,
-      system: systemPrompt,
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       ...(tools ? { tools } : {}),
-      messages,
+      messages: optimizedMessages,
     });
 
     totalInput += response.usage.input_tokens;
@@ -107,7 +156,7 @@ export async function runAgentLoop(
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolBlock.id,
-          content: JSON.stringify(result),
+          content: truncateToolResult(result),
         });
       }
 
@@ -156,19 +205,29 @@ export function runAgentLoopStreaming(
         })
       );
 
+      // Fast mode: SOAP/住院摘要已有充足上下文，不需要工具，減少輪次
+      const isFastMode = request.mode === 'hospitalization_summary' || request.mode === 'soap_structure';
+      const maxRounds = isFastMode ? FAST_MODE_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
+      const streamTools = isFastMode ? undefined : TOOL_DEFINITIONS;
+      // Fast mode 用 Haiku（更快更便宜），一般模式用 Sonnet（更強推理）
+      const model = isFastMode ? MODEL_HAIKU : MODEL_SONNET;
+
       try {
-        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        for (let round = 0; round < maxRounds; round++) {
+          // 截斷前輪 tool results，降低 conversation history token 消耗
+          const optimizedMessages = round > 0 ? truncatePreviousToolResults(messages) : messages;
+
           const stream = anthropic.messages.stream({
-            model: "claude-sonnet-4-5-20250929",
+            model,
             max_tokens: 4096,
-            system: systemPrompt,
-            tools: TOOL_DEFINITIONS,
-            messages,
+            system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+            ...(streamTools ? { tools: streamTools } : {}),
+            messages: optimizedMessages,
           });
 
           // Collect the full response for tool handling
           let currentToolUseBlocks: Anthropic.Messages.ToolUseBlock[] = [];
-          let isToolUse = false;
+          const isToolUse = false;
 
           stream.on("text", (text) => {
             // Send text deltas as SSE events
@@ -239,7 +298,7 @@ export function runAgentLoopStreaming(
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: toolBlock.id,
-                content: JSON.stringify(result),
+                content: truncateToolResult(result),
               });
             }
 
