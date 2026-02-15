@@ -253,11 +253,68 @@ function buildContextPrompt(
   // ── 模式提示 ──
   if (mode === "soap_structure") {
     sections.push(
-      `\n### 📌 任務\n請根據以上病患資訊和醫師的問題，協助結構化 SOAP 記錄。`
+      `\n### 📌 任務
+請根據以上病患資訊和醫師的口述記錄，協助結構化 SOAP 記錄。
+
+**重要：回答時，除了文字說明外，你必須在回答末尾包含一個 JSON 區塊（使用 \\\`\\\`\\\`json 標記），格式如下：**
+
+\\\`\\\`\\\`json
+{
+  "structured_soap": {
+    "subjective": {
+      "chief_complaint": "主訴內容",
+      "history": "病史描述",
+      "symptoms": ["症狀1", "症狀2"]
+    },
+    "objective": {
+      "physical_exam": "理學檢查發現",
+      "vital_signs": {},
+      "lab_results": "相關檢驗結果"
+    },
+    "assessment": {
+      "primary_diagnosis": "主要診斷",
+      "differential_diagnosis": ["鑑別診斷1", "鑑別診斷2"],
+      "clinical_reasoning": "臨床推理"
+    },
+    "plan": {
+      "diagnostics": ["建議檢查項目"],
+      "treatment": ["治療計畫"],
+      "monitoring": ["追蹤項目"],
+      "client_education": "飼主衛教"
+    }
+  }
+}
+\\\`\\\`\\\`
+
+務必包含此 JSON 區塊，EMR 系統需要它來結構化記錄。`
     );
   } else if (mode === "hospitalization_summary") {
     sections.push(
-      `\n### 📌 任務\n請根據以上住院資訊，生成完整的住院摘要報告，包括：病例概述、治療進展、用藥審查、診斷建議、預後評估。`
+      `\n### 📌 任務
+請根據以上住院資訊，生成完整的住院摘要報告。
+
+**重要：回答時，除了文字說明外，你必須在回答末尾包含一個 JSON 區塊（使用 \\\`\\\`\\\`json 標記），格式如下：**
+
+\\\`\\\`\\\`json
+{
+  "summary": {
+    "case_overview": "病例概述",
+    "treatment_progress": "治療進展描述",
+    "vital_sign_trends": "生命徵象趨勢",
+    "medication_review": {
+      "current_medications": ["藥物1", "藥物2"],
+      "warnings": ["警告1"],
+      "suggestions": ["建議1"]
+    },
+    "diagnostic_suggestions": ["建議的進一步檢查"],
+    "prognosis_notes": "預後評估"
+  }
+}
+\\\`\\\`\\\`
+
+務必包含此 JSON 區塊，EMR 系統需要它來顯示結構化摘要。
+
+**效能提示**：住院資訊已包含在上方上下文中（病患資料、治療醫囑、治療執行記錄等），請直接根據這些資訊生成摘要，**不需要額外搜尋文獻或使用工具**，除非有明確的臨床問題需要查證。`
     );
   }
 
