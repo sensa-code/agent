@@ -3,7 +3,7 @@
 // ============================================================================
 
 import Anthropic from "@anthropic-ai/sdk";
-import { getSystemPrompt } from "@/lib/prompts/system";
+import { getSystemPromptWithContext } from "@/lib/prompts/system";
 import { TOOL_DEFINITIONS, executeToolCall } from "@/lib/tools";
 import type {
   AgentRequest,
@@ -32,6 +32,12 @@ export async function runAgentLoop(
   let totalInput = 0;
   let totalOutput = 0;
 
+  // Build system prompt with patient context (if provided by EMR)
+  const systemPrompt = getSystemPromptWithContext(
+    request.context,
+    request.mode
+  );
+
   // Build messages for Claude API
   const messages: Anthropic.Messages.MessageParam[] = request.messages.map(
     (m) => ({
@@ -44,7 +50,7 @@ export async function runAgentLoop(
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 4096,
-      system: getSystemPrompt(),
+      system: systemPrompt,
       tools: TOOL_DEFINITIONS,
       messages,
     });
@@ -130,6 +136,12 @@ export function runAgentLoopStreaming(
       let totalInput = 0;
       let totalOutput = 0;
 
+      // Build system prompt with patient context (if provided by EMR)
+      const systemPrompt = getSystemPromptWithContext(
+        request.context,
+        request.mode
+      );
+
       const messages: Anthropic.Messages.MessageParam[] = request.messages.map(
         (m) => ({
           role: m.role as "user" | "assistant",
@@ -142,7 +154,7 @@ export function runAgentLoopStreaming(
           const stream = anthropic.messages.stream({
             model: "claude-sonnet-4-5-20250929",
             max_tokens: 4096,
-            system: getSystemPrompt(),
+            system: systemPrompt,
             tools: TOOL_DEFINITIONS,
             messages,
           });

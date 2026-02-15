@@ -11,7 +11,7 @@ import { runAgentLoop } from "@/lib/agent/loop";
 import { checkUsageLimit, incrementUsage } from "@/lib/billing/usage-tracker";
 import { calculateCost, trackCost } from "@/lib/monitoring/cost-tracker";
 import { evaluateAnswerQuality } from "@/lib/monitoring/quality-score";
-import type { ChatMessage } from "@/lib/agent/types";
+import type { ChatMessage, PatientContext, AIMode } from "@/lib/agent/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -86,9 +86,11 @@ export async function POST(request: NextRequest) {
 
     // ── 5. Parse request body ──
     const body = await request.json();
-    const { message, species } = body as {
+    const { message, species, context, mode } = body as {
       message?: string;
       species?: string;
+      context?: PatientContext;
+      mode?: AIMode;
     };
 
     if (!message || typeof message !== "string") {
@@ -99,11 +101,17 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 6. Build messages and run agent ──
+    // 將 species 前綴加在 user message（向下相容）
     const messages: ChatMessage[] = [
       { role: "user", content: species ? `[物種: ${species}] ${message}` : message },
     ];
 
-    const result = await runAgentLoop({ messages, userId: validation.userId });
+    const result = await runAgentLoop({
+      messages,
+      userId: validation.userId,
+      context: context || undefined,
+      mode: mode || undefined,
+    });
 
     // ── 7. Track usage and cost ──
     const totalTokens =
