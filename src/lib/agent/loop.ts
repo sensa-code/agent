@@ -13,8 +13,8 @@ import type {
   TokenUsage,
 } from "./types";
 
-const MAX_TOOL_ROUNDS = 5; // 最多 5 輪 tool 呼叫
-const FAST_MODE_TOOL_ROUNDS = 2; // hospitalization_summary / soap_structure 減少工具輪次避免 timeout
+const MAX_TOOL_ROUNDS = 3; // 最多 3 輪 tool 呼叫（Vercel Hobby 60s 限制）
+const FAST_MODE_TOOL_ROUNDS = 1; // hospitalization_summary / soap_structure 僅 1 輪工具（已有充足上下文）
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -48,16 +48,17 @@ export async function runAgentLoop(
   );
 
   // 住院摘要和 SOAP 結構化已有充足上下文，減少工具輪次避免 Vercel timeout
-  const maxRounds = (request.mode === 'hospitalization_summary' || request.mode === 'soap_structure')
-    ? FAST_MODE_TOOL_ROUNDS
-    : MAX_TOOL_ROUNDS;
+  const isFastMode = request.mode === 'hospitalization_summary' || request.mode === 'soap_structure';
+  const maxRounds = isFastMode ? FAST_MODE_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
+  // Fast mode 不提供工具（上下文已足夠），節省 token 和時間
+  const tools = isFastMode ? undefined : TOOL_DEFINITIONS;
 
   for (let round = 0; round < maxRounds; round++) {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-5-20250929",
       max_tokens: 4096,
       system: systemPrompt,
-      tools: TOOL_DEFINITIONS,
+      ...(tools ? { tools } : {}),
       messages,
     });
 
