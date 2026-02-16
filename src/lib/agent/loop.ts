@@ -13,7 +13,7 @@ import type {
   TokenUsage,
 } from "./types";
 
-const MAX_TOOL_ROUNDS = 3; // 最多 3 輪 tool 呼叫（Vercel Hobby 60s 限制）
+const MAX_TOOL_ROUNDS = 5; // 最多 5 輪 tool 呼叫（需確保最後一輪能 end_turn）
 const FAST_MODE_TOOL_ROUNDS = 1; // hospitalization_summary / soap_structure 僅 1 輪工具（已有充足上下文）
 const MAX_TOOL_RESULT_CHARS = 2000; // Tool result 截斷上限（節省 token）
 const MAX_PREV_TOOL_RESULT_CHARS = 1000; // 前輪 tool result 截斷上限（conversation history 節省）
@@ -106,6 +106,12 @@ export async function runAgentLoop(
     // 首輪強制使用工具（tool_choice: any），後續輪次由 Claude 自行決定
     const toolChoice = (tools && round === 0) ? { type: "any" as const } : undefined;
 
+    // 最後一輪或已超過 40 秒：不提供工具，強制 Claude 產生最終回覆
+    const elapsedMs = Date.now() - startTime;
+    const isLastRound = round === maxRounds - 1;
+    const isTimeConstrained = elapsedMs > 40_000;
+    const roundTools = (isLastRound || isTimeConstrained) ? undefined : tools;
+
     // Fast mode (SOAP/住院摘要) 需要更多 output tokens（中文 + JSON 結構較長）
     const maxTokens = isFastMode ? 8192 : 4096;
 
@@ -113,7 +119,7 @@ export async function runAgentLoop(
       model,
       max_tokens: maxTokens,
       system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-      ...(tools ? { tools, ...(toolChoice ? { tool_choice: toolChoice } : {}) } : {}),
+      ...(roundTools ? { tools: roundTools, ...(toolChoice ? { tool_choice: toolChoice } : {}) } : {}),
       messages: optimizedMessages,
     });
 
@@ -226,13 +232,19 @@ export function runAgentLoopStreaming(
           // 首輪強制使用工具（tool_choice: any），後續輪次由 Claude 自行決定
           const streamToolChoice = (streamTools && round === 0) ? { type: "any" as const } : undefined;
 
+          // 最後一輪或已超過 40 秒：不提供工具，強制 Claude 產生最終回覆
+          const streamElapsedMs = Date.now() - startTime;
+          const isStreamLastRound = round === maxRounds - 1;
+          const isStreamTimeConstrained = streamElapsedMs > 40_000;
+          const roundStreamTools = (isStreamLastRound || isStreamTimeConstrained) ? undefined : streamTools;
+
           const streamMaxTokens = isFastMode ? 8192 : 4096;
 
           const stream = anthropic.messages.stream({
             model,
             max_tokens: streamMaxTokens,
             system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-            ...(streamTools ? { tools: streamTools, ...(streamToolChoice ? { tool_choice: streamToolChoice } : {}) } : {}),
+            ...(roundStreamTools ? { tools: roundStreamTools, ...(streamToolChoice ? { tool_choice: streamToolChoice } : {}) } : {}),
             messages: optimizedMessages,
           });
 
