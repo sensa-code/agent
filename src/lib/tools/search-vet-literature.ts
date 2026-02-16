@@ -100,7 +100,7 @@ async function keywordFallbackSearch(
       query_embedding: normalizedVec,
       match_count: maxResults,
       match_threshold: 0.0,
-      filter_category: category && category !== "all" ? category : null,
+      filter_category: null,  // 暫時停用 category 過濾（資料庫 category 欄位多數為空）
       filter_species: null,  // 暫時停用 species 過濾（資料庫 species 欄位為空）
     });
 
@@ -146,7 +146,7 @@ export async function searchVetLiterature(input: {
         query_embedding: embedding,
         match_count: max_results,
         match_threshold: 0.5,
-        filter_category: category && category !== "all" ? category : null,
+        filter_category: null,  // 暫時停用 category 過濾（資料庫 category 欄位多數為空）
         filter_species: null,  // 暫時停用 species 過濾（資料庫 species 欄位為空）
       });
 
