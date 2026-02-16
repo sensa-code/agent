@@ -164,8 +164,10 @@ export async function POST(request: NextRequest) {
         // Debug: tool calls info
         _debug_tool_calls: result.toolCalls.map(tc => ({
           name: tc.name,
+          input: tc.input,
           resultIsArray: Array.isArray(tc.result),
           resultLength: Array.isArray(tc.result) ? tc.result.length : typeof tc.result,
+          resultPreview: JSON.stringify(tc.result).substring(0, 200),
         })),
         _debug_citations_count: result.citations.length,
       },
