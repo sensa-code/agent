@@ -161,6 +161,13 @@ export async function POST(request: NextRequest) {
         },
         quality_score: quality.overall,
         latency_ms: result.latencyMs,
+        // Debug: tool calls info
+        _debug_tool_calls: result.toolCalls.map(tc => ({
+          name: tc.name,
+          resultIsArray: Array.isArray(tc.result),
+          resultLength: Array.isArray(tc.result) ? tc.result.length : typeof tc.result,
+        })),
+        _debug_citations_count: result.citations.length,
       },
       {
         headers: {
