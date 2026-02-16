@@ -106,9 +106,12 @@ export async function runAgentLoop(
     // 首輪強制使用工具（tool_choice: any），後續輪次由 Claude 自行決定
     const toolChoice = (tools && round === 0) ? { type: "any" as const } : undefined;
 
+    // Fast mode (SOAP/住院摘要) 需要更多 output tokens（中文 + JSON 結構較長）
+    const maxTokens = isFastMode ? 8192 : 4096;
+
     const response = await anthropic.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
       ...(tools ? { tools, ...(toolChoice ? { tool_choice: toolChoice } : {}) } : {}),
       messages: optimizedMessages,
@@ -223,9 +226,11 @@ export function runAgentLoopStreaming(
           // 首輪強制使用工具（tool_choice: any），後續輪次由 Claude 自行決定
           const streamToolChoice = (streamTools && round === 0) ? { type: "any" as const } : undefined;
 
+          const streamMaxTokens = isFastMode ? 8192 : 4096;
+
           const stream = anthropic.messages.stream({
             model,
-            max_tokens: 4096,
+            max_tokens: streamMaxTokens,
             system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
             ...(streamTools ? { tools: streamTools, ...(streamToolChoice ? { tool_choice: streamToolChoice } : {}) } : {}),
             messages: optimizedMessages,
