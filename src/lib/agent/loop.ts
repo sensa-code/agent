@@ -134,7 +134,12 @@ export async function runAgentLoop(
         .join("");
 
       // Extract citations from tool results
+      console.log(`[AgentLoop] end_turn at round ${round}, allToolCalls: ${allToolCalls.length}`);
+      for (const tc of allToolCalls) {
+        console.log(`[AgentLoop] tool: ${tc.name}, result isArray: ${Array.isArray(tc.result)}, result type: ${typeof tc.result}, length: ${Array.isArray(tc.result) ? tc.result.length : 'N/A'}`);
+      }
       extractCitationsFromToolCalls(allToolCalls, allCitations);
+      console.log(`[AgentLoop] citations extracted: ${allCitations.length}`);
 
       return {
         content: textContent,
