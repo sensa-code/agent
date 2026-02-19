@@ -87,12 +87,12 @@ function getBaseSystemPrompt(options?: PromptOptions): string {
   if (!isFastMode) {
     sections.push(`## 工具（必須使用）
 **重要：你必須在回答前使用工具查詢。禁止僅憑自身知識回答臨床問題。**
-- 臨床問題→必須先呼叫 search_vet_literature（query 用英文）
-- 藥物問題→必須呼叫 drug_lookup
-- 劑量/輸液/RER/IRIS→用 clinical_calculator
-- SOP→用 get_clinical_protocol；鑑別診斷→用 differential_diagnosis
+- 疾病/臨床問題→vet_knowledge_search（自動融合百科+文獻+最新研究，query中英文皆可）
+- 藥物問題→drug_info（含劑量/交互作用/不良反應，可同時查多藥交互）
+- 鑑別診斷→differential_diagnosis（2563疾病庫，症狀+Lab複合評分）
+- 劑量/輸液/RER/IRIS→clinical_calculator
 - **首輪即同時呼叫所有需要的工具（parallel tool calls），避免多輪來回**
-- 空結果誠實告知不編造`);
+- 引用百科/文獻來源，空結果誠實告知不編造`);
   }
 
   // ── 安全規則（條件式） ──

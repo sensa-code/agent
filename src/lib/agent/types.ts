@@ -129,6 +129,12 @@ export interface Citation {
   year?: number;
   excerpt?: string;
   similarity?: number;
+  /** Extended fields for unified knowledge interface */
+  url?: string;
+  journal?: string;
+  sourceOrg?: string;
+  pmid?: string;
+  sourceType?: "vetpro" | "rag" | "pubmed" | "openfda";
 }
 
 export interface TokenUsage {
@@ -139,11 +145,10 @@ export interface TokenUsage {
 // ─── Tool Types ───
 
 export type ToolName =
-  | "search_vet_literature"
-  | "drug_lookup"
-  | "clinical_calculator"
-  | "get_clinical_protocol"
-  | "differential_diagnosis";
+  | "vet_knowledge_search"
+  | "drug_info"
+  | "differential_diagnosis"
+  | "clinical_calculator";
 
 export type ToolDefinition = Anthropic.Messages.Tool;
 

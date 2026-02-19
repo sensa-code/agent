@@ -343,21 +343,118 @@ export function runAgentLoopStreaming(
   });
 }
 
-/** Extract citations from RAG tool results */
+/** Extract citations from tool results (supports unified knowledge interface) */
 function extractCitationsFromToolCalls(
   toolCalls: ToolCallRecord[],
   citations: Citation[]
 ): void {
+  let citationId = 1;
+
   for (const call of toolCalls) {
-    if (call.name === "search_vet_literature" && Array.isArray(call.result)) {
+    const result = call.result as Record<string, unknown> | null;
+    if (!result) continue;
+
+    // ── vet_knowledge_search: extract from results[].citation ──
+    if (call.name === "vet_knowledge_search") {
+      const results = (result.results as Array<Record<string, unknown>>) || [];
+      for (const item of results) {
+        const citation = item.citation as Record<string, unknown> | undefined;
+        if (!citation) continue;
+        citations.push({
+          id: citationId++,
+          title: (citation.title as string) || (item.title as string) || "Unknown",
+          source: (citation.source as string) || "Unknown",
+          year: citation.year as number | undefined,
+          excerpt: ((item.content as string) || "").substring(0, 200),
+          similarity: item.similarity as number | undefined,
+          url: citation.url as string | undefined,
+          journal: citation.journal as string | undefined,
+          sourceOrg: citation.sourceOrg as string | undefined,
+          pmid: citation.pmid as string | undefined,
+          sourceType: (citation.sourceType as Citation["sourceType"]) || (item.source as Citation["sourceType"]),
+        });
+      }
+
+      // Also extract from diseaseDetail.references if present
+      const detail = result.diseaseDetail as Record<string, unknown> | undefined;
+      if (detail?.references && Array.isArray(detail.references)) {
+        for (const ref of detail.references as Array<Record<string, unknown>>) {
+          citations.push({
+            id: citationId++,
+            title: (ref.title as string) || "Unknown",
+            source: (ref.sourceOrg as string) || (ref.journal as string) || "VetPro Encyclopedia",
+            year: ref.year as number | undefined,
+            url: ref.url as string | undefined,
+            sourceOrg: ref.sourceOrg as string | undefined,
+            sourceType: "vetpro",
+          });
+        }
+      }
+    }
+
+    // ── drug_info: extract from drugDetail references + interactions ──
+    else if (call.name === "drug_info") {
+      const drugDetail = result.drugDetail as Record<string, unknown> | undefined;
+      if (drugDetail) {
+        citations.push({
+          id: citationId++,
+          title: (drugDetail.nameEn as string) || "Unknown Drug",
+          source: "VetPro Drug Database",
+          sourceType: "vetpro",
+        });
+      }
+
+      // RAG fallback results
+      const ragResults = (result.ragResults as Array<Record<string, unknown>>) || [];
+      for (const item of ragResults) {
+        const citation = item.citation as Record<string, unknown> | undefined;
+        citations.push({
+          id: citationId++,
+          title: (citation?.title as string) || (item.title as string) || "Unknown",
+          source: (citation?.source as string) || "Knowledge Base",
+          year: citation?.year as number | undefined,
+          sourceType: "rag",
+        });
+      }
+    }
+
+    // ── differential_diagnosis: note the source ──
+    else if (call.name === "differential_diagnosis") {
+      const source = result.source as string;
+      if (source === "vetpro") {
+        citations.push({
+          id: citationId++,
+          title: "VetPro DDX Engine",
+          source: `VetPro Encyclopedia (${(result.totalResults as number) || 0} results)`,
+          sourceType: "vetpro",
+        });
+      }
+
+      // RAG supplements
+      const ragSupplements = (result.ragSupplements as Array<Record<string, unknown>>) || [];
+      for (const item of ragSupplements) {
+        const citation = item.citation as Record<string, unknown> | undefined;
+        citations.push({
+          id: citationId++,
+          title: (citation?.title as string) || (item.title as string) || "Unknown",
+          source: (citation?.source as string) || "Knowledge Base",
+          year: citation?.year as number | undefined,
+          sourceType: "rag",
+        });
+      }
+    }
+
+    // ── Legacy: search_vet_literature (backward compatibility) ──
+    else if (call.name === "search_vet_literature" && Array.isArray(call.result)) {
       for (const doc of call.result as Array<Record<string, unknown>>) {
         citations.push({
-          id: doc.id as number,
+          id: citationId++,
           title: (doc.title as string) || "Unknown",
           source: (doc.source as string) || "Unknown",
           year: doc.year as number | undefined,
           excerpt: ((doc.content as string) || "").substring(0, 200),
           similarity: doc.similarity as number | undefined,
+          sourceType: "rag",
         });
       }
     }

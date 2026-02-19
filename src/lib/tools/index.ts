@@ -1,24 +1,26 @@
 // ============================================================================
-// VetEvidence — Tool Router
+// VetEvidence — Tool Router (Unified Knowledge Interface)
+// 4 tools: vet_knowledge_search, drug_info, differential_diagnosis, clinical_calculator
 // ============================================================================
 
 import type { ToolDefinition } from "@/lib/agent/types";
 import {
-  searchVetLiteratureSchema,
-  searchVetLiterature,
-} from "./search-vet-literature";
-import { drugLookupSchema, drugLookup } from "./drug-lookup";
+  vetKnowledgeSearchSchema,
+  vetKnowledgeSearch,
+} from "./vet-knowledge-search";
+import { drugInfoSchema, drugInfo } from "./drug-info";
 import { clinicalCalculatorSchema, clinicalCalculate } from "./clinical-calculator";
-import { clinicalProtocolSchema, getClinicalProtocol } from "./clinical-protocol";
-import { differentialDiagnosisSchema, generateDifferentialDiagnosis } from "./differential-diagnosis";
-
-/** All tool definitions for Claude API */
-export const TOOL_DEFINITIONS: ToolDefinition[] = [
-  searchVetLiteratureSchema,
-  drugLookupSchema,
-  clinicalCalculatorSchema,
-  clinicalProtocolSchema,
+import {
   differentialDiagnosisSchema,
+  generateDifferentialDiagnosis,
+} from "./differential-diagnosis";
+
+/** All tool definitions for Claude API (4 unified tools) */
+export const TOOL_DEFINITIONS: ToolDefinition[] = [
+  vetKnowledgeSearchSchema,
+  drugInfoSchema,
+  differentialDiagnosisSchema,
+  clinicalCalculatorSchema,
 ];
 
 /** Execute a tool call by name */
@@ -27,19 +29,27 @@ export async function executeToolCall(
   input: Record<string, unknown>
 ): Promise<unknown> {
   switch (toolName) {
-    case "search_vet_literature":
-      return await searchVetLiterature(input as {
+    case "vet_knowledge_search":
+      return await vetKnowledgeSearch(input as {
         query: string;
         species?: string;
-        category?: string;
-        max_results?: number;
+        include_detail?: boolean;
+        include_pubmed?: boolean;
       });
 
-    case "drug_lookup":
-      return await drugLookup(input as {
+    case "drug_info":
+      return await drugInfo(input as {
         drug_name: string;
         species?: string;
-        info_type?: string;
+        check_interactions?: string[];
+      });
+
+    case "differential_diagnosis":
+      return await generateDifferentialDiagnosis(input as {
+        symptoms: string[];
+        species?: string;
+        labs?: string[];
+        exclude?: string[];
       });
 
     case "clinical_calculator":
@@ -49,32 +59,13 @@ export async function executeToolCall(
         parameters: Record<string, unknown>;
       });
 
-    case "get_clinical_protocol":
-      return await getClinicalProtocol(input as {
-        condition: string;
-        protocol_type?: string;
-        species?: string;
-      });
-
-    case "differential_diagnosis":
-      // Synchronous, no await needed
-      return generateDifferentialDiagnosis(input as {
-        symptoms: string[];
-        species: string;
-        age_years?: number;
-        breed?: string;
-        sex?: string;
-        additional_info?: string;
-      });
-
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
 }
 
 // Re-export for direct access
-export { searchVetLiterature } from "./search-vet-literature";
-export { drugLookup } from "./drug-lookup";
-export { clinicalCalculate } from "./clinical-calculator";
-export { getClinicalProtocol } from "./clinical-protocol";
+export { vetKnowledgeSearch } from "./vet-knowledge-search";
+export { drugInfo } from "./drug-info";
 export { generateDifferentialDiagnosis } from "./differential-diagnosis";
+export { clinicalCalculate } from "./clinical-calculator";
